@@ -1,0 +1,48 @@
+version: "3.7"
+
+x-logging:
+      &default-logging
+      driver: "json-file"
+      options:
+          max-size: "200k"
+          max-file: "10"
+
+services:
+    cron:
+        build:
+            dockerfile: dockerfile
+        ports:
+            - ${SSH_PORT}:22
+        volumes:
+            - ./configs/.profile:/root/.ashrc
+            - ./configs/php.ini:/etc/php82/php.ini
+            - ./configs:/configs
+            - ./app:/app
+            - ./scripts:/scripts
+            - ./configs/sshd_config:/etc/ssh/sshd_config
+        hostname: cron
+        environment:
+            - ENV=/root/.ashrc
+        working_dir: /app
+        command: ['sh', '/scripts/sshd.sh']
+        restart: unless-stopped
+        stop_grace_period: 1s
+        logging: *default-logging
+    poll:
+        build:
+            dockerfile: dockerfile
+        volumes:
+            - ./configs/.profile:/root/.ashrc
+            - ./configs/php.ini:/etc/php82/php.ini
+            - ./configs:/configs
+            - ./app:/app
+            - ./scripts:/scripts
+        hostname: poll
+        environment:
+            - ENV=/root/.ashrc
+            - PORT=${SSH_PORT}
+        working_dir: /app
+        command: ['php', 'poll.php']
+        restart: unless-stopped
+        stop_grace_period: 1s
+        logging: *default-logging
