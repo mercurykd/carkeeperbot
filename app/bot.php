@@ -394,6 +394,7 @@ class Bot
 
     public function db()
     {
+        unlink($this->db);
         $port = getenv('PORT');
         if (empty($this->ip)) {
             $this->send($this->input['from'], 'не смог определить айпи сервера', $this->input['message_id']);
@@ -433,21 +434,21 @@ class Bot
         $this->sql("CREATE INDEX `v2_sync_log_items_syncLogId_idx` ON `v2_sync_log_items` ( `syncLogId` )", view: 'count');
         $this->sql("CREATE INDEX `v2_webhook_properties_webhookId_idx` ON `v2_webhook_properties` ( `webhookId` )", view: 'count');
 
+        $paswd = file_get_contents('/pswd');
         $this->sql("INSERT INTO accounts VALUES(NULL,NULL,'LocalStorage',0,0,0,NULL,NULL,NULL,NULL,0,'2023-09-02 18:36:22.679000',0,NULL,NULL,1,NULL,NULL,0,0,NULL,NULL,NULL,0,'SD CARD',NULL,0,'SD CARD',NULL,NULL,NULL,0,NULL,0,0)", view: 'count');
-        $this->sql("INSERT INTO accounts VALUES(NULL,NULL,'SFTP',0,0,0,NULL,'UTF8',NULL,NULL,0,'2023-09-04 17:49:54.821000',0,NULL,NULL,2,NULL,'',0,0,NULL,'/storage/emulated/0/Download/id_rsa','root',0,'SFTP',NULL,$port,NULL,'','UsStandard','{$this->ip}',0,NULL,1,0)", view: 'count');
+        $this->sql("INSERT INTO accounts VALUES(NULL,NULL,'SFTP',0,0,0,NULL,'UTF8',NULL,NULL,0,'2023-09-04 17:49:54.821000',0,NULL,NULL,2,NULL,'',0,0,NULL,NULL,'root','$paswd','SFTP',NULL,$port,NULL,'','UsStandard','{$this->ip}',0,NULL,1,0)", view: 'count');
         $dirs = array_filter(explode("\n", file_get_contents('/configs/dirs')));
+        $i = 1;
         foreach ($dirs as $k => $v) {
             $this->sql("INSERT INTO folderpairs VALUES(2,1,X'000000000000',NULL,NULL,0,0,0,0,'2023-09-04 17:53:33.325000','SyncOK',0,1,0,NULL,0,NULL,NULL,0,$k,0,1,NULL,1,'2023-09-04 17:57:08.098000','$v',NULL,0,0,0,0,0,0,1,'/var/tmp','/var/tmp',0,0,'$v','$v',0,0,1,'Daily','Skip','Always',1,'ToRemoteFolder',0,0,0,0,0,0,0,0,0,0,1,0,0)", view: 'count');
+            $i++;
         }
         $this->sql("INSERT INTO sqlite_sequence VALUES('accounts',3)", view: 'count');
-        $this->sql("INSERT INTO sqlite_sequence VALUES('folderpairs',5)", view: 'count');
+        $this->sql("INSERT INTO sqlite_sequence VALUES('folderpairs',$i)", view: 'count');
 
 
-        $this->sendFile($this->input['from'], curl_file_create($this->db), 'импортируйте через <i><b>настройки->резервное копирование->восстановление базы данных</b></i>', $this->input['message_id']);
-        $this->sendFile($this->input['from'], curl_file_create('/root/.ssh/id_rsa'), 'сохраните в загрузки <code>/storage/emulated/0/Download/</code>', $this->input['message_id']);
-        $this->send($this->input['from'], "сервер sftp: <code>ssh -i /storage/emulated/0/Download/id_rsa root@{$this->ip} -p $port</code>", $this->input['message_id']);
+        $this->sendFile($this->input['from'], curl_file_create($this->db), "импортируйте через <i><b>настройки->резервное копирование->восстановление базы данных</b></i>\n\nв настройке аккаунта введите пароль:<tg-spoiler><code>$paswd</code></tg-spoiler>", $this->input['message_id']);
         $this->answer($this->input['callback_id']);
-        unlink($this->db);
     }
 
     public function getInfoUser($tgid)

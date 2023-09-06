@@ -15,3 +15,5 @@ poll:
 	docker compose exec poll sh
 ps:
 	docker compose ps
+l:
+	docker compose logs
