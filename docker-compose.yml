@@ -20,6 +20,7 @@ services:
             - ./app:/app
             - ./scripts:/scripts
             - ./configs/sshd_config:/etc/ssh/sshd_config
+            - ./video:/var/tmp
         hostname: cron
         environment:
             - ENV=/root/.ashrc

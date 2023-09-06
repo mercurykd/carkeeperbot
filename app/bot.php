@@ -103,9 +103,29 @@ class Bot
     public function mailing($path)
     {
         foreach ($this->getAdmins() as $id => $name) {
-            $this->sendFile($id, curl_file_create($path));
+            switch (true) {
+                case preg_match('~\.ts$~', $path):
+                    $this->split($path);
+                    break;
+                case preg_match('~\.jpg$~', $path):
+                    $this->sendPhoto($id, curl_file_create($path));
+                    break;
+                case preg_match('~\.mp4$~', $path):
+                    $this->sendVideo($id, curl_file_create($path));
+                    break;
+
+                default:
+                    $this->sendFile($id, curl_file_create($path));
+                    break;
+            }
             unlink($path);
         }
+    }
+
+    public function split($path)
+    {
+        exec("ffmpeg -i $path -crf 25 -preset medium -movflags +faststart -c:a copy -map 0 -segment_time 00:00:30 -f segment -reset_timestamps 1 " . str_replace('.ts', '', $path) . "%03d.mp4");
+        unlink($path);
     }
 
     public function polling()
@@ -597,7 +617,7 @@ class Bot
         return $this->request('editMessageText', $data);
     }
 
-    public function sendPhoto($chat, $id_url_cFile, $caption = false, $to = false, $entities = false, $forum = false)
+    public function sendPhoto($chat, $id_url_cFile, $caption = false, $to = false)
     {
         $data = [
             'chat_id'             => $chat,
@@ -605,15 +625,18 @@ class Bot
             'caption'             => $caption,
             'reply_to_message_id' => $to,
         ];
-        if ($entities) {
-            $data['caption_entities'] = json_encode($entities);
-        } else {
-            $data['parse_mode'] = 'HTML';
-        }
-        if ($forum) {
-            $data['message_thread_id'] = $forum;
-        }
         return $this->request('sendPhoto', $data);
+    }
+
+    public function sendVideo($chat, $id_url_cFile, $caption = false, $to = false)
+    {
+        $data = [
+            'chat_id'             => $chat,
+            'video'               => $id_url_cFile,
+            'caption'             => $caption,
+            'reply_to_message_id' => $to,
+        ];
+        return $this->request('sendVideo', $data);
     }
 
     public function sendFile($chat, $id_url_cFile, $caption = false, $to = false)
