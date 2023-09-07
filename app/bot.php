@@ -8,12 +8,14 @@ class Bot
     public $input;
     public $callback;
     public $ip;
+    public $port;
     public $db = '/configs/foldersync.db';
 
     public function __construct()
     {
-        $this->ip  = $this->getIP();
-        $this->api = "https://api.telegram.org/bot{$this->getKey()}/";
+        $this->ip   = $this->getIP();
+        $this->port = getenv('PORT');
+        $this->api  = "https://api.telegram.org/bot{$this->getKey()}/";
         $this->setcommands([
             'commands' => [
                 [
@@ -261,14 +263,15 @@ class Bot
 
     public function menu()
     {
-        $data = [
+        $pswd   = file_get_contents('/configs/pswd');
+        $text[] = "<code>ssh root@{$this->ip} -p {$this->port}</code>";
+        $text[] = "<tg-spoiler>$pswd</tg-spoiler>";
+        $data   = [
             [
                 [
                     'text'          => "скачать приложение",
                     'callback_data' => "/apk",
                 ],
-            ],
-            [
                 [
                     'text'          => "скачать настройки",
                     'callback_data' => "/db",
@@ -276,18 +279,96 @@ class Bot
             ],
             [
                 [
+                    'text'          => "пути к папкам",
+                    'callback_data' => "/dirs",
+                ],
+                [
                     'text'          => "админы",
                     'callback_data' => "/admins",
                 ],
             ],
             [
                 [
-                    'text'          => "пути к папкам",
-                    'callback_data' => "/dirs",
+                    'text'          => "папка выгрузки",
+                    'callback_data' => "/tmp",
+                ],
+                [
+                    'text'          => "папка обмена",
+                    'callback_data' => "/sync",
+                ],
+            ],
+            [
+                [
+                    'text'          => "сменить пароль",
+                    'callback_data' => "/sendReply введите пароль_chpswd",
                 ],
             ],
         ];
+        $this->uors($text, $data);
+    }
+
+    public function chpswd($pswd)
+    {
+        file_put_contents('/configs/pswd', $pswd);
+        $this->ssh("echo 'root:$pswd'|chpasswd");
+        $this->menu();
+    }
+
+    public function ssh($cmd, $wait = true)
+    {
+        $c = ssh2_connect('cron', 22);
+        if (empty($c)) {
+            throw new Exception("no connection to cron: \n$cmd\n" . var_export($c, true));
+        }
+        $a = ssh2_auth_pubkey_file($c, 'root', '/root/.ssh/id_rsa.pub', '/root/.ssh/id_rsa');
+        if (empty($a)) {
+            throw new Exception("auth fail: \n$cmd\n" . var_export($a, true));
+        }
+        $s = ssh2_exec($c, $cmd);
+        if (empty($s)) {
+            throw new Exception("exec fail: \n$cmd\n" . var_export($s, true));
+        }
+        stream_set_blocking($s, $wait);
+        $data = "";
+        while ($buf = fread($s, 4096)) {
+            $data .= $buf;
+        }
+        fclose($s);
+        ssh2_disconnect($c);
+        return $data;
+    }
+
+    public function tmp()
+    {
+        clearstatcache();
+        foreach (scandir('/var/tmp') as $v) {
+            $size   = $this->sizeFormat(filesize("/var/tmp/$v"));
+            $data[] = [
+                [
+                    'text'          => "$v ($size)",
+                    'callback_data' => "/null",
+                ],
+            ];
+        }
+        $data[] = [
+            [
+                'text'          => "назад",
+                'callback_data' => "/menu",
+            ],
+        ];
         $this->uors(data: $data);
+    }
+
+    public function sizeFormat($bytes)
+    {
+        if (floor($bytes / 1024 ** 2) > 0) {
+            $r = round($bytes / 1024 ** 2, 2) . 'MB';
+        } elseif (floor($bytes / 1024) > 0) {
+            $r = round($bytes / 1024, 2) . 'KB';
+        } else {
+            $r = $bytes . 'B';
+        }
+        return $r;
     }
 
     public function admins()
@@ -401,7 +482,6 @@ class Bot
     public function db()
     {
         unlink($this->db);
-        $port = getenv('PORT');
         if (empty($this->ip)) {
             $this->send($this->input['from'], 'не смог определить айпи сервера', $this->input['message_id']);
             return;
@@ -440,9 +520,9 @@ class Bot
         $this->sql("CREATE INDEX `v2_sync_log_items_syncLogId_idx` ON `v2_sync_log_items` ( `syncLogId` )", view: 'count');
         $this->sql("CREATE INDEX `v2_webhook_properties_webhookId_idx` ON `v2_webhook_properties` ( `webhookId` )", view: 'count');
 
-        $paswd = file_get_contents('/pswd');
+        $paswd = file_get_contents('/configs/pswd');
         $this->sql("INSERT INTO accounts VALUES(NULL,NULL,'LocalStorage',0,0,0,NULL,NULL,NULL,NULL,0,'2023-09-02 18:36:22.679000',0,NULL,NULL,1,NULL,NULL,0,0,NULL,NULL,NULL,0,'SD CARD',NULL,0,'SD CARD',NULL,NULL,NULL,0,NULL,0,0)", view: 'count');
-        $this->sql("INSERT INTO accounts VALUES(NULL,NULL,'SFTP',0,0,0,NULL,'UTF8',NULL,NULL,0,'2023-09-04 17:49:54.821000',0,NULL,NULL,2,NULL,'',0,0,NULL,NULL,'root','$paswd','SFTP',NULL,$port,NULL,'','UsStandard','{$this->ip}',0,NULL,1,0)", view: 'count');
+        $this->sql("INSERT INTO accounts VALUES(NULL,NULL,'SFTP',0,0,0,NULL,'UTF8',NULL,NULL,0,'2023-09-04 17:49:54.821000',0,NULL,NULL,2,NULL,'',0,0,NULL,NULL,'root','$paswd','SFTP',NULL,$this->port,NULL,'','UsStandard','{$this->ip}',0,NULL,1,0)", view: 'count');
         $dirs = array_filter(explode("\n", file_get_contents('/configs/dirs')));
         $i = 1;
         foreach ($dirs as $k => $v) {
@@ -453,7 +533,7 @@ class Bot
         $this->sql("INSERT INTO sqlite_sequence VALUES('folderpairs',$i)", view: 'count');
 
 
-        $this->sendFile($this->input['from'], curl_file_create($this->db), "импортируйте через <i><b>настройки->резервное копирование->восстановление базы данных</b></i>\n\nв настройке аккаунта введите пароль:<tg-spoiler><code>$paswd</code></tg-spoiler>", $this->input['message_id']);
+        $this->sendFile($this->input['from'], curl_file_create($this->db), "импортируйте через <i><b>настройки->резервное копирование->восстановление базы данных</b></i>\n\nв настройке аккаунта введите пароль, нажмите 'синхронизировать всё'", $this->input['message_id']);
         $this->answer($this->input['callback_id']);
     }
 
