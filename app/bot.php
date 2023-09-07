@@ -102,6 +102,12 @@ class Bot
 
     public function mailing($path)
     {
+        $size = filesize($path);
+        sleep(1);
+        clearstatcache();
+        if (filesize($path) != $size) {
+            return;
+        }
         foreach ($this->getAdmins() as $id => $name) {
             switch (true) {
                 case preg_match('~\.ts$~', $path):
@@ -124,7 +130,7 @@ class Bot
 
     public function split($path)
     {
-        exec("ffmpeg -i $path -crf 25 -preset medium -movflags +faststart -c:a copy -map 0 -segment_time 00:00:30 -f segment -reset_timestamps 1 " . str_replace('.ts', '', $path) . "%03d.mp4");
+        exec("ffmpeg -i $path -c copy -map 0 -segment_time 00:00:30 -f segment -reset_timestamps 1 " . str_replace('.ts', '', $path) . "%03d.mp4");
         unlink($path);
     }
 
