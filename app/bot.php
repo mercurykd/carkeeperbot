@@ -346,7 +346,7 @@ class Bot
 
     public function addFile($text, $deep)
     {
-        $this->ll('view', $deep, add: 1);
+        $this->ll('view', $deep, add: $text);
     }
 
     public function ll($type, $deep, $del = false, $add = false, $i = 0, $path = '')
@@ -365,9 +365,16 @@ class Bot
             return $this->ll('view', implode(';', array_slice($deep, 0, count($deep) - 1)));
         }
         if ($i == array_key_last($deep) && $add) {
-            $r = $this->request('getFile', ['file_id' => $this->input['file_id']]);
-            $f = file_get_contents($this->file . $r['result']['file_path']);
-            file_put_contents("$path/" . basename($r['result']['file_path']), $f);
+            $r  = $this->request('getFile', ['file_id' => $this->input['file_id']]);
+            $ch = curl_init();
+            curl_setopt_array($ch, [
+                CURLOPT_URL            => $this->file . $r['result']['file_path'],
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_TIMEOUT        => 10,
+            ]);
+            $f = curl_exec($ch);
+            curl_close($ch);
+            file_put_contents("$path/" . $add, $f);
             return $this->ll('view', implode(';', $deep));
         }
         foreach (scandir($path) as $k => $v) {
