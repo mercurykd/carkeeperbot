@@ -20,7 +20,8 @@ services:
             - ./app:/app
             - ./scripts:/scripts
             - ./configs/sshd_config:/etc/ssh/sshd_config
-            - ./video:/var/tmp
+            - ./tmp:/var/tmp
+            - ./sync:/var/sync
         hostname: cron
         environment:
             - ENV=/root/.ashrc
@@ -38,6 +39,8 @@ services:
             - ./configs:/configs
             - ./app:/app
             - ./scripts:/scripts
+            - ./tmp:/var/tmp
+            - ./sync:/var/sync
         hostname: poll
         environment:
             - ENV=/root/.ashrc

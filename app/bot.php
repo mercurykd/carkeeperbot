@@ -3,6 +3,7 @@
 class Bot
 {
     public $api;
+    public $file;
     public $admin;
     public $admins;
     public $input;
@@ -16,6 +17,7 @@ class Bot
         $this->ip   = $this->getIP();
         $this->port = getenv('PORT');
         $this->api  = "https://api.telegram.org/bot{$this->getKey()}/";
+        $this->file = "https://api.telegram.org/file/bot{$this->getKey()}/";
         $this->setcommands([
             'commands' => [
                 [
@@ -82,6 +84,10 @@ class Bot
         $this->admins();
     }
 
+    /**
+     * Summary of cron
+     * @return never
+     */
     public function cron()
     {
         $path = '/var/tmp/';
@@ -290,11 +296,11 @@ class Bot
             [
                 [
                     'text'          => "папка выгрузки",
-                    'callback_data' => "/tmp",
+                    'callback_data' => "/ll view_/var/tmp",
                 ],
                 [
                     'text'          => "папка обмена",
-                    'callback_data' => "/sync",
+                    'callback_data' => "/ll view_/var/sync",
                 ],
             ],
             [
@@ -338,22 +344,64 @@ class Bot
         return $data;
     }
 
-    public function tmp()
+    public function addFile($text, $deep)
     {
+        $this->ll('view', $deep, add: 1);
+    }
+
+    public function ll($type, $deep, $del = false, $add = false, $i = 0, $path = '')
+    {
+        $data[] = [
+            [
+                'text'          => "загрузить файл",
+                'callback_data' => "/sendReply прикрепите файл_addFile_$deep",
+            ],
+        ];
         clearstatcache();
-        foreach (scandir('/var/tmp') as $v) {
-            $size   = $this->sizeFormat(filesize("/var/tmp/$v"));
+        $deep = explode(';', $deep);
+        $path = $path ?: $deep[0];
+        if ($i == array_key_last($deep) && $del) {
+            exec("rm -rf '$path'");
+            return $this->ll('view', implode(';', array_slice($deep, 0, count($deep) - 1)));
+        }
+        if ($i == array_key_last($deep) && $add) {
+            $r = $this->request('getFile', ['file_id' => $this->input['file_id']]);
+            $f = file_get_contents($this->file . $r['result']['file_path']);
+            file_put_contents("$path/" . basename($r['result']['file_path']), $f);
+            return $this->ll('view', implode(';', $deep));
+        }
+        foreach (scandir($path) as $k => $v) {
+            $tail = implode(';', array_merge($deep, [$k]));
+            if (in_array($v, ['.', '..'])) {
+                continue;
+            }
+            if ($i < array_key_last($deep) && $k == $deep[$i + 1] && is_dir("$path/$v")) {
+                return $this->ll($type, implode(';', $deep), $del, $add, $i + 1, "$path/$v");
+            }
+            if ($k == $deep[$i + 1]) {
+                switch ($type) {
+                    case 'download':
+                        return $this->sendFile($this->input['from'], curl_file_create("$path/$v"));
+                    case 'delete':
+                        exec("rm -rf '$path/$v'");
+                        return $this->ll('view', implode(';', array_slice($deep, 0, count($deep) - 1)));
+                }
+            }
             $data[] = [
                 [
-                    'text'          => "$v ($size)",
-                    'callback_data' => "/null",
+                    'text'          => is_dir("$path/$v") ? "📁 $v" : "📄 $v (" . $this->sizeFormat(filesize("$path/$v")) . ")",
+                    'callback_data' => '/ll ' . (is_dir("$path/$v") ? 'view' : 'download') . "_$tail",
+                ],
+                [
+                    'text'          => "🗑",
+                    'callback_data' => "/ll delete_$tail" . (is_dir("$path/$v") ? '_1' : ''),
                 ],
             ];
         }
         $data[] = [
             [
-                'text'          => "назад",
-                'callback_data' => "/menu",
+                'text'          => 'назад',
+                'callback_data' => count($deep) > 1 ? '/ll view_' . implode(';', array_slice($deep, 0, count($deep) - 1)) : '/menu',
             ],
         ];
         $this->uors(data: $data);
@@ -409,17 +457,21 @@ class Bot
 
     public function dirs()
     {
-        $text[] = <<<TEXT
-                каркипер - <code>/storage/emulated/0/carkeeperserver/temp</code>
-                фотки рега - <code>/storage/Tfcard/DCIM/Picture</code>
-                сохраненные видео - <code>/storage/Tfcard/DCIM/LockVideo</code>
-                настройки agama launcher - <code>/storage/emulated/0/Agama</code>
+        $syncdir = trim(file_get_contents('/configs/syncdir'));
+        $text[]  = <<<TEXT
+                папка обмена - двухстороняя направленность, <code>$syncdir</code>
+
+                папки выгрузки - одностороняя направленность, исходники пересылаются в телеграм и удаляются в папках
                 TEXT;
 
         $data[] = [
                 [
-                    'text'          => "добавить путь к папке",
+                    'text'          => "добавить папку выгрузки",
                     'callback_data' => "/sendReply введите путь_addDir",
+                ],
+                [
+                    'text'          => "сменить папку обмена",
+                    'callback_data' => "/sendReply введите путь_chSyncDir",
                 ],
         ];
         foreach ($this->getDirs() as $k => $v) {
@@ -437,6 +489,12 @@ class Bot
             ],
         ];
         $this->uors($text, $data);
+    }
+
+    public function chSyncDir($v)
+    {
+        file_put_contents('/configs/syncdir', trim($v));
+        $this->dirs();
     }
 
     public function addDir($v)
@@ -526,9 +584,11 @@ class Bot
         $dirs = array_filter(explode("\n", file_get_contents('/configs/dirs')));
         $i = 1;
         foreach ($dirs as $k => $v) {
-            $this->sql("INSERT INTO folderpairs VALUES(2,1,X'000000000000',NULL,NULL,0,0,0,0,'2023-09-04 17:53:33.325000','SyncOK',0,1,0,NULL,0,NULL,NULL,0,$k,0,1,NULL,1,'2023-09-04 17:57:08.098000','$v',NULL,0,0,0,0,0,0,1,'/var/tmp','/var/tmp',0,0,'$v','$v',0,0,1,'Daily','Skip','Always',1,'ToRemoteFolder',0,0,0,0,0,0,0,0,0,0,1,0,0)", view: 'count');
+            $this->sql("INSERT INTO folderpairs VALUES(2,1,X'000000000000',NULL,NULL,0,0,0,0,'2023-09-04 17:53:33.325000','SyncOK',0,1,0,NULL,0,NULL,NULL,0,$k,0,1,NULL,1,'2023-09-04 17:57:08.098000','$v',NULL,0,0,0,0,0,0,1,'/var/tmp','/var/tmp',0,0,'$v','$v',0,0,1,'Every30Minutes','Skip','Always',1,'ToRemoteFolder',0,0,0,0,0,0,0,0,0,0,1,0,0)", view: 'count');
             $i++;
         }
+        $syncdir = trim(file_get_contents('/configs/syncdir'));
+        $this->sql("INSERT INTO folderpairs VALUES(2,1,X'000000000000',NULL,NULL,0,0,0,0,'2023-09-04 17:53:33.325000','SyncOK',0,1,0,NULL,0,NULL,NULL,0,++$i,0,1,NULL,1,'2023-09-04 17:57:08.098000','$syncdir',NULL,0,0,0,0,0,0,0,'/var/sync','/var/sync',0,0,'$syncdir','$syncdir',0,0,1,'Every5Minutes','Skip','Always',1,'TwoWay',0,0,0,0,0,0,0,0,0,0,1,0,0)", view: 'count');
         $this->sql("INSERT INTO sqlite_sequence VALUES('accounts',3)", view: 'count');
         $this->sql("INSERT INTO sqlite_sequence VALUES('folderpairs',$i)", view: 'count');
 
@@ -624,6 +684,12 @@ class Bot
         ]);
         $res = json_decode(curl_exec($ch), true);
         curl_close($ch);
+        if ($res['description']) {
+            var_dump([
+                'request'  => $data,
+                'response' => $res,
+            ]);
+        }
         return $res;
     }
 
