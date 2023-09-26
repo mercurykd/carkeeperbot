@@ -385,7 +385,7 @@ class Bot
             curl_setopt_array($ch, [
                 CURLOPT_URL            => $this->file . $r['result']['file_path'],
                 CURLOPT_RETURNTRANSFER => true,
-                CURLOPT_TIMEOUT        => 10,
+                CURLOPT_TIMEOUT        => 60,
             ]);
             $f = curl_exec($ch);
             curl_close($ch);
