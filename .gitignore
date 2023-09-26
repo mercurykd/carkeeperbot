@@ -1,2 +1,9 @@
-
 .vscode
+**/sessions/*
+!**/sessions/.gitkeep
+**/sync/*
+!**/sync/.gitkeep
+**/tmp/*
+!**/tmp/.gitkeep
+**/video/*
+!**/video/.gitkeep

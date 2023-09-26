@@ -11,6 +11,7 @@ class Bot
     public $ip;
     public $port;
     public $db = '/configs/foldersync.db';
+    public $session;
 
     public function __construct()
     {
@@ -159,7 +160,6 @@ class Bot
                 foreach ($r['result'] as $v) {
                     try {
                         $this->input($v);
-                        $this->callbackCheck();
                     } catch (\Throwable $e) {
                         var_dump('error:', $e);
                     }
@@ -210,19 +210,31 @@ class Bot
         $this->input['admin'] = array_key_exists($this->input['from'], $this->admins);
         $this->session();
         $this->route();
+        $this->callbackCheck();
+    }
+
+    public function getSession()
+    {
+        $src = "/sessions/{$this->input['from']}";
+        if (file_exists($src)) {
+            return json_decode(file_get_contents($src), true);
+        }
+        return [];
+    }
+    public function setSession($data)
+    {
+        return file_put_contents("/sessions/{$this->input['from']}", json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
     }
 
     public function session()
     {
-        session_id($this->input['from']);
-        session_start();
-        if (!empty($_SESSION['reply'])) {
-            if (empty($this->input['reply'])) {
-                foreach ($_SESSION['reply'] as $k => $v) {
-                    $this->delete($this->input['chat'], $k);
-                }
-                unset($_SESSION['reply']);
+        $this->session = $this->getSession();
+        if (empty($this->input['reply']) && !empty($this->session['reply'])) {
+            foreach ($this->session['reply'] as $k => $v) {
+                $this->delete($this->input['chat'], $k);
             }
+            unset($this->session['reply']);
+            $this->setSession($this->session);
         }
     }
 
@@ -346,6 +358,9 @@ class Bot
 
     public function addFile($text, $deep)
     {
+        if (empty($text)) {
+            return $this->send($this->input['from'], 'не указано название файла', $this->input['message_id']);
+        }
         $this->ll('view', $deep, add: $text);
     }
 
@@ -379,7 +394,7 @@ class Bot
         }
         foreach (scandir($path) as $k => $v) {
             $tail = implode(';', array_merge($deep, [$k]));
-            if (in_array($v, ['.', '..'])) {
+            if (in_array($v, ['.', '..', '.gitkeep'])) {
                 continue;
             }
             if ($i < array_key_last($deep) && $k == $deep[$i + 1] && is_dir("$path/$v")) {
@@ -641,7 +656,6 @@ class Bot
         $callback = $_SESSION['reply'][$this->input['reply']]['callback'];
         $this->input['message_id']  = $this->input['callback_id'] = $_SESSION['reply'][$this->input['reply']]['start_message'];
         $this->{$callback}($this->input['message'], ...$_SESSION['reply'][$this->input['reply']]['args']);
-        $this->answer($_SESSION['reply'][$this->input['reply']]['start_message']);
         unset($_SESSION['reply'][$this->input['reply']]);
     }
 
@@ -676,7 +690,7 @@ class Bot
         return $this->send(array_key_first($this->getAdmins()), debug_backtrace()[0]['line'] . ":\n" . var_export($var, true));
     }
 
-    public function request($method, $data, $json_header = 0)
+    public function request($method, $data = [], $json_header = 0)
     {
         $ch = curl_init();
         curl_setopt_array($ch, [
@@ -687,15 +701,18 @@ class Bot
                 'Content-Type: application/json'
             ] : [],
             CURLOPT_POSTFIELDS => $data,
-            // CURLOPT_TIMEOUT    => 5,
+            CURLOPT_TIMEOUT    => $method == 'getUpdates' ? 20 : 3,
         ]);
         $res = json_decode(curl_exec($ch), true);
         curl_close($ch);
-        if ($res['description']) {
-            var_dump([
-                'request'  => $data,
+        if (!empty($res['description']) || is_null($res)) {
+            $chain = array_reduce(array_reverse(debug_backtrace(2)), fn ($c, $i) => ($c ? "$c->" : "") . "{$i['function']}");
+            echo date('Y-m-d H:i:s') . ' ' . json_encode([
+                'chain'    => $chain,
+                'method'   => $method,
+                'request'  => is_array($data) ? $data : json_decode($data, true),
                 'response' => $res,
-            ]);
+            ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         }
         return $res;
     }
