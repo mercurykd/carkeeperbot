@@ -1,4 +1,4 @@
-FROM alpine:latest
+FROM alpine:3.19.1
 RUN apk add --no-cache --update php82 \
     php82-curl \
     php82-session \
@@ -9,7 +9,6 @@ RUN apk add --no-cache --update php82 \
     openssh \
     curl \
     ffmpeg \
-    && ln -s /usr/bin/php82 /usr/bin/php \
     && ssh-keygen -m PEM -t rsa -f /root/.ssh/id_rsa -N '' \
     && cat /root/.ssh/id_rsa.pub > /root/.ssh/authorized_keys \
     && mkdir /var/sync
