@@ -9,6 +9,7 @@ x-logging:
 
 services:
     cron:
+        image: carkeeper
         build:
             dockerfile: dockerfile
         ports:
@@ -31,6 +32,7 @@ services:
         stop_grace_period: 1s
         logging: *default-logging
     poll:
+        image: carkeeper
         build:
             dockerfile: dockerfile
         volumes:
